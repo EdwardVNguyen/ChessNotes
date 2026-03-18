@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/////////////////
+// BASE TABLES //
+/////////////////
+
+model Users {
+  user_id          Int @id  @default(autoincrement())
+  username         String   @unique @db.VarChar(255)
+  biography        String?  @db.VarChar(4095)
+  role             Role     @default(USER) 
+  created_at       DateTime @default(now()) 
+
+  credentials        User_credentials?
+  rating_info        User_rating_info[]
+  user_folders       Folders[]
+  user_notes         Notes[]
+  user_annotations   Annotations[]
+  user_subscriptions Donation_subscriptions[]
+
+  followedBy          Users[] @relation("UserFollows")
+  following           Users[] @relation("UserFollows")
+
+  blockedBy           Users[] @relation("UserBlocking")
+  blocking            Users[] @relation("UserBlocking")
+
+  folder_collaborator Folders[] @relation("CollaboratorFolder")
+  note_collaborator   Notes[]   @relation("CollaboratorNotes")
+
+  user_games_as_black Game_info[] @relation("BlackPlayer")
+  user_games_as_white Game_info[] @relation("WhitePlayer")
+}
+
+// Collection of changes/delta between rating points for a given user
+model User_rating_info {
+  user_rating_info_id Int       @id @default(autoincrement())
+  user                Users?    @relation(fields: [userId], references: [user_id], onUpdate: Cascade, onDelete: SetNull)
+  userId              Int       @unique
+  bullet_rating       Int
+  blitz_rating        Int
+  rapid_rating        Int
+  classical_rating    Int
+  created_at          DateTime  @default(now())
+}
+
+model Games {
+  game_id      Int      @id @default(autoincrement())
+  pgn          String
+  starting_fen String   @default("")
+  type         Game_type
+  created_at   DateTime @default(now())
+
+  game_notes   Notes[]
+  info         Game_info? 
+}
+
+// Folder to contain game notes. A folder can have zero or one parent folder, and zero or many child folders
+model Folders {
+  folder_id         Int          @id @default(autoincrement())
+  author            Users        @relation(fields: [authorId], references: [user_id], onUpdate: Cascade, onDelete: Cascade) 
+  authorId          Int
+  parentFolderId    Int?
+  parentFolder      Folders?     @relation("ParentChild", fields: [parentFolderId], references: [folder_id], onUpdate: Cascade, onDelete: Cascade)
+  childFolder       Folders[]    @relation("ParentChild")
+  folder_name       String       @db.VarChar(255)
+  visibility        Visibilities @default(PRIVATE)
+  clone_permission  Permissions  @default(ONLY_ME)
+  export_permission Permissions  @default(ONLY_ME)
+  created_at        DateTime     @default(now())
+
+  folder_notes      Notes[] 
+  collaborator      Users[] @relation("CollaboratorFolder")
+
+}
+
+model Notes {
+  note_id     Int       @id @default(autoincrement())
+  author      Users     @relation(fields: [authorId], references: [user_id], onUpdate: Cascade, onDelete: Cascade)
+  authorId    Int
+  game        Games     @relation(fields: [gameId], references: [game_id], onDelete: Cascade)
+  gameId      Int
+  folder      Folders?  @relation(fields: [folderId], references: [folder_id], onDelete: SetNull)
+  folderId    Int
+  note_name   String    @db.VarChar(255)
+  created_at  DateTime  @default(now())
+
+  note_annotations  Annotations[]
+  collaborator      Users[] @relation("CollaboratorNotes")
+}
+
+model Annotations {
+  annotation_id Int      @id @default(autoincrement())
+  author        Users?   @relation(fields: [authorId], references: [user_id], onDelete: SetNull)
+  authorId      Int
+  note          Notes    @relation(fields: [noteId], references: [note_id], onDelete: Cascade)
+  noteId        Int
+  comment       String   @db.VarChar(4095)
+  move_number   Int
+  color         Player_color
+  glyph         Int? 
+  created_at    DateTime @default(now())
+}
+
+model Donation_subscriptions {
+  donation_subscription_id Int                 @id @default(autoincrement())
+  user                     Users?              @relation(fields: [userId], references: [user_id], onDelete: SetNull)
+  userId                   Int
+  currency                 String              @db.Char(3)
+  amount                   Decimal             @db.Decimal(10,2)
+  number_of_payments       Int                 @default(1)
+  status                   Subscription_status @default(INACTIVE)
+  processor                String
+  processor_sub_id         String              @unique
+  created_at               DateTime            @default(now())
+  current_period_end       DateTime
+  cancelled_at             DateTime
+}
+
+///////////////////
+// WEAK ENTITIES //
+///////////////////
+
+model User_credentials {
+  user        Users     @relation(fields: [userId], references: [user_id], onDelete: Cascade)
+  userId      Int       @unique
+  email       String    @db.VarChar(255) @unique
+  password    String    @db.VarChar(255)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  @@id([userId, email])
+}
+
+model Game_info {
+  game          Games     @relation(fields: [gameInfoId], references: [game_id])
+  gameInfoId    Int       @id
+  white         Users?    @relation("WhitePlayer", fields: [whiteId], references: [user_id], onUpdate: Cascade, onDelete: SetNull)
+  whiteId       Int
+  white_rating  Int
+  black         Users?    @relation("BlackPlayer", fields: [blackId], references: [user_id], onUpdate: Cascade, onDelete: SetNull)
+  blackId       Int
+  black_rating  Int
+  time_control  Time_control
+  result_reason Result_reason
+  created_at    DateTime  @default(now())
+}
+
+///////////
+// ENUMS //
+///////////
+
+enum Role { 
+  USER
+  ADMIN
+}
+
+enum Game_type {
+  USER
+  IMPORTED
+} 
+
+enum Visibilities {
+  PUBLIC
+  PRIVATE
+  UNLISTED
+}
+
+enum Permissions {
+  NOBODY
+  ONLY_ME
+  CONTRIBUTORS
+  EVERYONE 
+}
+
+enum Player_color {
+  BLACK
+  WHITE 
+}
+
+enum Subscription_status {
+  ACTIVE
+  INACTIVE
+  ONE_TIME_PAYMENT
+}
+
+enum Time_control {
+  BULLET
+  BLITZ
+  RAPID
+  CLASSICAL
+}
+
+enum Result_reason {
+  CHECKMATE
+  RESIGNATION
+  TIMEOUT
+  DRAW
+}
+
+
